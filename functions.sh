@@ -1696,7 +1696,7 @@ stop_lvm_raid() {
 
   dmsetup remove_all > /dev/null 2>&1
 
-  test -x "$(which mdadm)" && for i in $(cat /proc/mdstat | grep md | cut -d ' ' -f1); do
+  test -x "$(type -P mdadm)" && for i in $(cat /proc/mdstat | grep md | cut -d ' ' -f1); do
     [ -e /dev/$i ] && mdadm -S /dev/$i >> /dev/null 2>&1
   done
 }
