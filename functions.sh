@@ -646,7 +646,7 @@ if [ -n "$1" ]; then
   # special hidden configure option: configure layout for RAID5, 6 and 10
   RAID_LAYOUT="$(grep -m1 -e ^RAID_LAYOUT "$1" |awk '{print $2}')"
   export RAID_LAYOUT
-
+  
   # special hidden configure option: GPT usage
   # if set to 1, use GPT even on disks smaller than 2TiB
   # if set to 2, always use GPT, even if the OS does not support it
@@ -1048,7 +1048,7 @@ validate_vars() {
     # when drives of different sizes are in a system
     SMALLEST_HDD_SIZE=$DRIVE_SUM_SIZE
     SMALLEST_HDD_SIZE=$((SMALLEST_HDD_SIZE / 1024 / 1024))
-    echo "Size of smallest drive is $DRIVE_SUM_SIZE" | debugoutput
+    echo "Size of smallest drive is $DRIVE_SUM_SIZE Bytes" | debugoutput
     if [ "$SWRAIDLEVEL" = "0" ]; then
       DRIVE_SUM_SIZE=$((DRIVE_SUM_SIZE * COUNT_DRIVES))
     elif [ "$SWRAIDLEVEL" = "5" ]; then
@@ -1058,7 +1058,7 @@ validate_vars() {
     elif [ "$SWRAIDLEVEL" = "10" ]; then
       DRIVE_SUM_SIZE=$((DRIVE_SUM_SIZE * (COUNT_DRIVES / 2) ))
     fi
-    debug "Calculated size of array is: $DRIVE_SUM_SIZE"
+    debug "Calculated size of array is: $DRIVE_SUM_SIZE Bytes"
   fi
 
   DRIVE_SUM_SIZE=$((DRIVE_SUM_SIZE / 1024 / 1024))
@@ -1696,7 +1696,7 @@ stop_lvm_raid() {
 
   dmsetup remove_all > /dev/null 2>&1
 
-  test -x "$(which mdadm)" && for i in $(cat /proc/mdstat | grep md | cut -d ' ' -f1); do
+  test -x "$(which mdadm)" && for i in $(grep md /proc/mdstat | cut -d ' ' -f1); do
     [ -e /dev/$i ] && mdadm -S /dev/$i >> /dev/null 2>&1
   done
 }
@@ -2169,6 +2169,7 @@ make_swraid() {
         local array_raidlevel="$SWRAIDLEVEL"
         local can_assume_clean=''
         local array_layout=''
+        local array_chunksize=''
 
         # GRUB can't boot from a RAID0/5/6 or 10 partition, so make /boot always RAID1
         if [ "$(echo "$line" | grep "/boot ")" ]; then
@@ -2195,7 +2196,21 @@ make_swraid() {
         fi
         debug "Array RAID Level is: '$array_raidlevel' - $can_assume_clean - $array_layout"
         debug "Array metadata is: '$array_metadata'"
-
+        
+          if [ "$array_raidlevel" = "5" ] || [ "$array_raidlevel" = "6" ] || [ "$array_raidlevel" = "10" ]; then
+            if [ -n "$array_chunksize" ]; then
+              if [ "$array_chunksize" = "8" ] || [ "$array_chunksize" = "16" ] || [ "$array_chunksize" = "32" ] || [ "$array_chunksize" = "64" ] || [ "$array_chunksize" = "128" ] || [ "$array_chunksize" = "256" ] || [ "$array_chunksize" = "512" ]; then
+                 yes | mdadm -q -C $raid_device -l$array_raidlevel $array_chunksize -n$n $array_metadata $array_layout $can_assume_clean $components 2>&1 | debugoutput ; EXITCODE=$?
+                  else
+                  # Default
+                  array_chunksize="64"
+                  debug "Array Chunk Size is: '$array_chunksize'"
+                  yes | mdadm -q -C $raid_device -l$array_raidlevel $array_chunksize -n$n $array_metadata $array_layout $can_assume_clean $components 2>&1 | debugoutput ; EXITCODE=$?
+               fi               
+             fi
+           fi              
+        fi
+        
         yes | mdadm -q -C $raid_device -l$array_raidlevel -n$n $array_metadata $array_layout $can_assume_clean $components 2>&1 | debugoutput ; EXITCODE=$?
 
         count="$[$count+1]"
@@ -3898,14 +3913,14 @@ function getHDDsNotInToleranceRange() {
   local smallest_hdd; smallest_hdd="$(smallest_hd)"
   local smallest_hdd_size; smallest_hdd_size="$(blockdev --getsize64 "$smallest_hdd")"
   local max_size=$(( smallest_hdd_size * RANGE / 100 ))
-  debug "checking if hdd sizes are within tolerance. min: $smallest_hdd_size / max: $max_size"
+  debug "checking if hdd sizes are within tolerance. min: $smallest_hdd_size Bytes / max: $max_size Bytes"
   for i in $(seq 1 $COUNT_DRIVES); do
     if [ "$(blockdev --getsize64 "$(eval echo "\$DRIVE$i")")" -gt "$max_size" ]; then
       eval echo "\$DRIVE$i"
       debug "DRIVE$i not in range"
     else
       debug "DRIVE$i in range"
-      blockdev --getsize64 "$(eval echo "\$DRIVE$i")" | debugoutput
+      blockdev --getsize64 "$(eval echo "\$DRIVE$i" Bytes)" | debugoutput
     fi
   done
 
